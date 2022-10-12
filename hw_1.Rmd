@@ -1,0 +1,180 @@
+---
+title: ""
+author: ""
+date: "`r format(Sys.time(), '%B %d, %Y %H:%M')`"
+output:
+  html_document:
+  number_sections: TRUE
+self_contained: TRUE
+code_folding: hide
+toc: TRUE
+toc_float: TRUE
+mathjax: null
+df_print: paged    
+css: !expr here::here("www", "web_report.css")
+editor_options:
+  chunk_output_type: console
+---
+  
+<style>
+@import url('https://fonts.googleapis.com/css?family=Lato&display=swap');
+</style>
+  
+## Household Deprivation in London
+  
+  
+<link rel="stylesheet" href="//fonts.googleapis.com/css?family=Lato" />
+  
+```{r header-image, fig.width = 5.14, fig.height = 1.46, echo = FALSE, units = "in"}
+# All defaults
+knitr::include_graphics(here::here("www", "images", "urban-institute-logo.png"))
+
+```
+
+
+
+```{r rmarkdown-setup, echo = FALSE}
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r setup}
+options(scipen = 999)
+
+library(tidyverse)
+library(osrm)
+library(basemaps)
+library(tidyverse)
+library(sf)
+library(mapview)
+library(readxl)
+library(tidylog)
+library(urbnthemes)
+library(urbntemplates)
+library(urbnmapr)
+
+set_urbn_defaults(style = "map")
+```
+
+```{r}
+
+# Read in msoa data
+england_msoa = st_read("data/england_msoa_2011_sgen_clipped.shp")
+
+# Read in deprivation excel file
+deprivation_data = read_excel("data/London/Tables/depriv_data.xlsx")
+
+
+# Left join deprivation data to MSOA data
+msoa_deprivation_data = england_msoa %>% 
+  left_join(deprivation_data, by = c("code" = "msoacode")) %>% 
+  # Filter out MSOAs not in London 
+  filter(!is.na(population))
+
+
+# Calculate area of each MSOA and population density 
+msoa_deprivation_data = msoa_deprivation_data %>% 
+  mutate(areasqkm = st_area(.)) %>% 
+  mutate(population_density = population/areasqkm) %>% 
+  # Turn percents into decimals for easier working with R
+  mutate(perc_depr_households = perc_depr_households/100,
+         perc_pensioncredit = perc_pensioncredit/100)
+```
+
+
+## Percent Deprived Housholds in London
+
+```{r}
+ggplot() + 
+  geom_sf(data = msoa_deprivation_data,
+          aes(fill = perc_depr_households)) + 
+  theme_void() +
+  scale_fill_gradientn(colors = palette_urbn_cyan, 
+                       labels = scales::percent) 
+```
+
+
+## Percen of 60+ Adults on pension credits
+
+```{r}
+ggplot() + 
+  geom_sf(data = msoa_deprivation_data,
+          aes(fill = perc_pensioncredit)) + 
+  theme_void() +
+  scale_fill_gradientn(colors = palette_urbn_green, 
+                       labels = scales::percent) 
+```
+
+## Population Density
+
+```{r}
+ggplot() + 
+  geom_sf(data = msoa_deprivation_data,
+          aes(fill = population_density)) + 
+  theme_void() +
+  scale_fill_gradientn(colors = palette_urbn_cyan) 
+```
+
+
+
+
+
+```{r class exercises}
+england_districts = st_read("data/London/Polygons/districts.shp")
+
+england_quals = read_csv("data/London/Tables/qualifications2001_2.csv")
+england_house_sales = read_csv("data/London/Tables/housesales.csv")
+england_tube_stations = st_read("data/London/Points/tube_stations.shp") %>% 
+  # add index which we will use later
+  mutate(
+    index = row_number()
+  )
+
+england_house_sales = england_house_sales %>% 
+  st_as_sf(coords = c("greastings", "grnorthing"),
+           crs = "EPSG:27700")
+
+england_qual_data = england_districts %>% 
+  left_join(england_quals, by = c("DIST_CODE" = "Zone_Code"))
+
+
+england_qual_data = england_qual_data %>% mutate(
+  perc_level_4 = Level4/Population1674
+)
+
+england_qual_data %>%
+  ggplot() +
+  geom_sf(color = "white", 
+          aes(fill = perc_level_4)) +
+  geom_sf(data = england_tube_stations,
+          color = "black",
+          size = 2,
+          stroke = FALSE) +
+  geom_sf(data = england_house_sales, 
+          color = palette_urbn_magenta[5], 
+          alpha = 0.4,
+          stroke = FALSE) + 
+  theme_void() +
+  scale_fill_gradientn(colors = palette_urbn_cyan, labels = scales::percent) +
+  labs(fill = "% Level\n4")
+
+
+
+# Get just names of the closest tube station, but not the distance
+england_house_sales = england_house_sales %>% 
+  mutate(
+    nearest_tube_station_index = st_nearest_feature(., england_tube_stations)
+  ) %>% 
+  left_join(england_tube_stations %>% 
+              st_drop_geometry() %>% 
+              select(index, STATION),
+            by = c("nearest_tube_station_index" = "index")
+  )
+
+
+
+
+
+
+
+```
